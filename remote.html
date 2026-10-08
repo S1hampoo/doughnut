@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>NEON RING · Remote</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;touch-action:none;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #pad{position:relative;overflow:hidden;touch-action:none}
+  .ring{position:absolute;border-radius:50%;box-sizing:border-box;border:4px solid #b8f1ff;
+    box-shadow:0 0 8px #4fd8ff,0 0 22px #4fd8ff,inset 0 0 8px #4fd8ff;
+    transform:translate(-50%,-50%) scale(.2);opacity:0;pointer-events:none;
+    animation:pop 1.2s ease-out forwards}
+  @keyframes pop{
+    0%{transform:translate(-50%,-50%) scale(.2);opacity:0}
+    15%{transform:translate(-50%,-50%) scale(1.1);opacity:1}
+    30%{transform:translate(-50%,-50%) scale(1)}
+    100%{transform:translate(-50%,-50%) scale(1);opacity:0}}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="pad"></div></div>
+
+<script>
+const AR = 1920 / 2795;          // 대형 화면 비율과 동일하게 매핑
+const RING_RATIO = 200 / 1920;   // display.html radius / W
+const pad = document.getElementById('pad');
+
+function fit(){
+  let w = innerWidth, h = innerHeight;
+  if (w / h > AR) w = h * AR; else h = w / AR;
+  pad.style.width = w + 'px'; pad.style.height = h + 'px';
+}
+addEventListener('resize', fit); fit();
+
+/* 연결 (상태는 콘솔에만) */
+const id = new URLSearchParams(location.search).get('id');
+let peer = null, conn = null, retry = null;
+
+function connect(){
+  clearTimeout(retry);
+  if (!peer || peer.destroyed) return;
+  if (peer.disconnected){ peer.reconnect(); return; }
+  conn = peer.connect(id, { reliable: true });
+  conn.on('open', () => console.log('connected'));
+  conn.on('close', () => { retry = setTimeout(connect, 1500); });
+}
+
+if (id){
+  peer = new Peer();
+  peer.on('open', connect);
+  peer.on('disconnected', () => peer.reconnect());
+  peer.on('error', () => { if (!(conn && conn.open)) retry = setTimeout(connect, 2000); });
+}
+
+/* 터치 → 도넛 */
+function fx(x, y, w){
+  const d = w * RING_RATIO * 2;
+  const el = document.createElement('div');
+  el.className = 'ring';
+  el.style.cssText = `left:${x}px;top:${y}px;width:${d}px;height:${d}px`;
+  pad.appendChild(el);
+  setTimeout(() => el.remove(), 1300);
+}
+
+pad.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const r = pad.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  fx(px, py, r.width);
+  if (conn && conn.open) conn.send({ t: 'tap', x: px / r.width, y: py / r.height });
+  if (navigator.vibrate) navigator.vibrate(12);
+});
+</script>
+</body>
+</html>
