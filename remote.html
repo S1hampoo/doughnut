@@ -132,6 +132,7 @@ function status(t, bad, autoHide){
 /* 연결 대상: ?id=(예전 QR) 또는 ?room= 또는 기본 방 */
 const params = new URLSearchParams(location.search);
 const ROOM = (params.get('room') || 'aplan-4face').replace(/[^a-z0-9-]/gi, '');
+let helloOK = false, helloT = null;
 const TARGET = params.get('id') || ('nr-' + ROOM);
 
 let peer = null, conn = null, retryT = null, openT = null;
@@ -154,12 +155,16 @@ function connect(){
   openT = setTimeout(() => { if (!c.open){ status('화면을 찾는 중… (화면이 켜져 있나요?)', true); scheduleRetry(500); } }, 6000);
   c.on('data', d => {
     if (!d) return;
+    if (d.t === 'hello'){ helloOK = d.app === '4face'; clearTimeout(helloT); status(helloOK ? '● 연결됨 · ' + ROOM : '⚠ 다른 화면에 연결됨', !helloOK, helloOK); return; }
     if (d.t === 'shock') onShock();
     else if (d.t === 'state') onState(d);
   });
   c.on('open', () => {
     clearTimeout(openT);
-    status('● 연결됨', false, true);
+    status('연결 확인 중…');
+    // 이 버전의 디스플레이가 맞는지 확인: 2초 안에 응답이 없으면 예전 화면(다른 프로젝트·이전 버전)에 붙은 것
+    helloOK = false; clearTimeout(helloT);
+    helloT = setTimeout(() => { if (!helloOK) status('⚠ 예전 버전 화면에 연결됨 · PC 화면(Q키)의 QR을 다시 찍어주세요 (방: ' + ROOM + ')', true); }, 2000);
     setTimeout(() => { try { sendClock(); } catch(e){} }, 300);
     while (queue.length) c.send(queue.shift());
   });
